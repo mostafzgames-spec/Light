@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>تطبيق الربح</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            background-color: #1c1c1e;
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            text-align: center;
+            user-select: none;
+        }
+        .header {
+            padding: 20px;
+            background: linear-gradient(45deg, #f39c12, #d35400);
+            box-shadow: 0 4px 15px rgba(243, 156, 18, 0.4);
+            border-bottom-right-radius: 20px;
+            border-bottom-left-radius: 20px;
+        }
+        .points-box {
+            font-size: 32px;
+            font-weight: bold;
+        }
+        .usd-val {
+            font-size: 14px;
+            opacity: 0.8;
+        }
+        
+        /* التبويبات */
+        .tab-content { display: none; padding: 20px; padding-bottom: 80px; }
+        .active-tab { display: block; }
+
+        /* الأزرار */
+        button {
+            background: #2980b9;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 12px;
+            font-size: 18px;
+            margin: 10px;
+            width: 80%;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        button:active { transform: scale(0.95); }
+        .btn-ad { background: #27ae60; }
+        
+        /* عجلة الحظ */
+        .wheel-container {
+            margin: 20px auto;
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            border: 5px solid #f1c40f;
+            position: relative;
+            background: conic-gradient(#e74c3c 0deg 60deg, #3498db 60deg 120deg, #f1c40f 120deg 180deg, #9b59b6 180deg 240deg, #2ecc71 240deg 300deg, #e67e22 300deg 360deg);
+            transition: transform 3s ease-out;
+        }
+        .arrow {
+            position: absolute;
+            top: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0; 
+            height: 0; 
+            border-left: 10px solid transparent;
+            border-right: 10px solid transparent;
+            border-top: 20px solid white;
+            z-index: 10;
+        }
+
+        /* القائمة السفلية */
+        .nav-bar {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            background: #2c3e50;
+            display: flex;
+            justify-content: space-around;
+            padding: 15px 0;
+            border-top: 1px solid #444;
+        }
+        .nav-item { font-size: 24px; color: #7f8c8d; }
+        .nav-active { color: #f39c12; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div>رصيدك الحالي</div>
+        <div class="points-box" id="displayPoints">0</div>
+        <div class="usd-val">≈ $<span id="displayUsd">0.00</span> USDT</div>
+    </div>
+
+    <div id="tab-mining" class="tab-content active-tab">
+        <h2>⛏ التعدين السحابي</h2>
+        <p>شاهد إعلاناً لتفعيل التعدين لمدة ساعة</p>
+        <div id="mining-status" style="margin: 20px; color: #7f8c8d;">التعدين متوقف 🔴</div>
+        <button class="btn-ad" onclick="startMining()">مشاهدة إعلان وبدء التعدين</button>
+    </div>
+
+    <div id="tab-wheel" class="tab-content">
+        <h2>🎡 عجلة الحظ</h2>
+        <div class="arrow"></div>
+        <div class="wheel-container" id="wheel"></div>
+        <br>
+        <button onclick="spinWheel()">دوّر واربح (10 نقاط)</button>
+    </div>
+
+    <div id="tab-wallet" class="tab-content">
+        <h2>💳 سحب الأرباح</h2>
+        <input type="text" id="wallet-input" placeholder="عنوان FaucetPay (USDT)" style="width: 80%; padding: 10px; border-radius: 8px; border: none; margin-bottom: 10px;">
+        <button onclick="saveWallet()">حفظ المحفظة</button>
+        <hr style="border-color: #444;">
+        <button style="background: #c0392b;" onclick="withdraw()">طلب سحب</button>
+        <p id="withdraw-msg"></p>
+    </div>
+
+    <div class="nav-bar">
+        <div class="nav-item nav-active" onclick="switchTab('mining', this)">⛏</div>
+        <div class="nav-item" onclick="switchTab('wheel', this)">🎡</div>
+        <div class="nav-item" onclick="switchTab('wallet', this)">💳</div>
+    </div>
+
+    <script>
+        // إعدادات البوت والتطبيق
+        let points = 0;
+        let isMining = false;
+        const tg = window.Telegram.WebApp;
+        tg.expand(); // توسيع التطبيق لملء الشاشة
+
+        // --- روابط الإعلانات ---
+        // ضع رابط شركتك الإعلانية هنا (Adsterra/Monetag Direct Link)
+        const AD_LINK = "https://www.google.com"; 
+
+        function updateDisplay() {
+            document.getElementById('displayPoints').innerText = points;
+            document.getElementById('displayUsd').innerText = (points * 0.0001).toFixed(4);
+        }
+
+        // --- وظائف التعدين ---
+        function startMining() {
+            if (isMining) return;
+            
+            // فتح الإعلان
+            tg.openLink(AD_LINK);
+            
+            document.getElementById('mining-status').innerText = "جاري التحقق من الإعلان...";
+            
+            // محاكاة انتهاء الاعلان وبدء التعدين
+            setTimeout(() => {
+                isMining = true;
+                document.getElementById('mining-status').innerText = "✅ التعدين يعمل! (يتم جمع النقاط...)";
+                document.getElementById('mining-status').style.color = "#2ecc71";
+                
+                // إضافة نقاط كل ثانية
+                let miningInterval = setInterval(() => {
+                    points += 1;
+                    updateDisplay();
+                }, 1000);
+                
+                // إيقاف التعدين بعد دقيقة (مثال)
+                setTimeout(() => {
+                    clearInterval(miningInterval);
+                    isMining = false;
+                    document.getElementById('mining-status').innerText = "توقف التعدين 🔴. شاهد إعلاناً آخر.";
+                    document.getElementById('mining-status').style.color = "#e74c3c";
+                    alert("انتهت جلسة التعدين! جمعت نقاطاً إضافية.");
+                }, 10000); // 10 ثواني للتجربة
+
+            }, 2000);
+        }
+
+        // --- وظائف العجلة ---
+        function spinWheel() {
+            if (points < 10) {
+                alert("تحتاج 10 نقاط لتدوير العجلة! اذهب للتعدين أولاً.");
+                return;
+            }
+            
+            // خصم تكلفة اللفة
+            points -= 10;
+            updateDisplay();
+
+            const wheel = document.getElementById('wheel');
+            const deg = Math.floor(5000 + Math.random() * 5000); // دوران عشوائي قوي
+            wheel.style.transform = `rotate(${deg}deg)`;
+            
+            // فتح إعلان أثناء الدوران
+            tg.openLink(AD_LINK);
+
+            setTimeout(() => {
+                const reward = Math.floor(Math.random() * 50); // ربح عشوائي
+                points += reward;
+                updateDisplay();
+                alert(`توقفت العجلة! 🎉 ربحت ${reward} نقطة.`);
+                wheel.style.transform = `rotate(0deg)`; // إعادة ضبط
+            }, 3000);
+        }
+
+        // --- التنقل بين الصفحات ---
+        function switchTab(tabName, element) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active-tab'));
+            document.getElementById('tab-' + tabName).classList.add('active-tab');
+            
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('nav-active'));
+            element.classList.add('nav-active');
+        }
+
+        // --- المحفظة ---
+        function saveWallet() {
+            const wallet = document.getElementById('wallet-input').value;
+            if(wallet.length > 5) {
+                alert("تم حفظ المحفظة: " + wallet);
+                // هنا نرسل البيانات للبوت (يحتاج برمجة خلفية)
+                tg.sendData(JSON.stringify({action: "save_wallet", wallet: wallet}));
+            }
+        }
+
+        function withdraw() {
+            if (points < 1000) {
+                alert("الحد الأدنى للسحب 1000 نقطة");
+                return;
+            }
+            alert("تم إرسال طلب السحب بنجاح!");
+            // إرسال البيانات للبوت
+            tg.sendData(JSON.stringify({action: "withdraw", amount: points}));
+            points = 0;
+            updateDisplay();
+        }
+    </script>
+</body>
+</html>
